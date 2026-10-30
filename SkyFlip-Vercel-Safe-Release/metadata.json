@@ -1,6 +1,0 @@
-{
-  "name": "SkyFlip - Hypixel Skyblock AH Flipper & Mod Companion",
-  "description": "Real-time Hypixel Skyblock Auction House snipe scanner and Java Minecraft mod companion with live purse sync, 1-click buy commands, profit margin calculation, and instant alerts.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
