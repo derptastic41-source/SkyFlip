@@ -103,14 +103,14 @@ export default function App() {
   useEffect(() => {
     fetchFlips();
     // Billing is intentionally disabled until per-user authentication and verified Live subscriptions are implemented.
-    fetch('/api/settings/alerts').then(r => r.json()).then(setTimings).catch(() => {});
+    accountHeaders().then(headers => fetch('/api/settings/alerts', { headers })).then(r => r.json()).then(setTimings).catch(() => {});
     fetchModStatus();
     fetchPlayerProfile();
     fetchScannerStatus();
     fetchToken();
 
-    // Setup Server-Sent Events (SSE)
-    const eventSource = new EventSource('/api/mod/stream');
+    // Live mod streaming is not deployed; avoid opening a reconnecting 503 endpoint.
+    /*
 
     eventSource.addEventListener('flips_updated', () => {
       fetchFlips();
@@ -149,14 +149,15 @@ export default function App() {
       } catch (err) {}
     });
 
-    // SSE already pushes updates; slower fallback avoids disruptive UI churn.
+    */
+    // Poll public auction data while the page is open.
     const interval = setInterval(() => {
       fetchFlips();
       fetchScannerStatus();
     }, 60000);
 
     return () => {
-      eventSource.close();
+
       clearInterval(interval);
     };
   }, []);
@@ -179,9 +180,19 @@ export default function App() {
     } catch {}
   };
 
+  const accountHeaders = async (): Promise<HeadersInit> => {
+    const session = await supabase?.auth.getSession();
+    const token = session?.data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  useEffect(() => {
+    if (authUser) { fetchPlayerProfile(); accountHeaders().then(headers => fetch('/api/settings/alerts', { headers })).then(r => r.json()).then(setTimings).catch(() => {}); }
+  }, [authUser]);
+
   const fetchPlayerProfile = async () => {
     try {
-      const res = await fetch('/api/player/profile');
+      const res = await fetch('/api/player/profile', { headers: await accountHeaders() });
       const data = await res.json();
       if (data.profile) {
         setPlayerProfile(data.profile);
@@ -211,7 +222,7 @@ export default function App() {
     try {
       const res = await fetch('/api/player/connect', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await accountHeaders() },
         body: JSON.stringify({ username })
       });
       const data = await res.json();
@@ -233,7 +244,7 @@ export default function App() {
 
   const handleDisconnectPlayer = async () => {
     try {
-      await fetch('/api/player/disconnect', { method: 'POST' });
+      await fetch('/api/player/disconnect', { method: 'POST', headers: await accountHeaders() });
       setPlayerProfile(null);
       setModState(prev => ({
         ...prev,
@@ -248,7 +259,7 @@ export default function App() {
     try {
       await fetch('/api/hypixel/scan', { method: 'POST' });
       setScannerState(prev => ({ ...prev, isScanning: true, scanProgress: 10 }));
-      setLastNotification('Started full scan of all Hypixel Skyblock auction pages...');
+      setLastNotification('Refreshing available Hypixel auction data (limited-page scan)...');
       setTimeout(() => setLastNotification(null), 3000);
     } catch {}
   };
@@ -438,7 +449,7 @@ export default function App() {
         </div>
       )}
 
-      {import.meta.env.PROD && <div role="status" className="border-b border-amber-500/40 bg-amber-950 px-5 py-3 text-sm text-amber-200">SkyFlip public preview — auction scanner, Minecraft pairing, and Premium checkout are not connected on this deployment. No live auction alerts are available yet.</div>}
+      {import.meta.env.PROD && <div role="status" className="border-b border-amber-500/40 bg-amber-950 px-5 py-3 text-sm text-amber-200">SkyFlip beta — live auction listings are sampled, not a full-market scanner. Minecraft mod pairing, automatic alerts and Premium checkout are not yet available.</div>}
 
       {/* Main Viewport */}
       <main className="flex-1 flex flex-col">
@@ -475,7 +486,7 @@ export default function App() {
                 </label>
                 <button disabled={!isPremium} className="rounded bg-amber-500 px-4 py-2 font-semibold text-black disabled:opacity-50" onClick={async () => {
                   try {
-                    const res = await fetch('/api/settings/alerts', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(timings)});
+                    const res = await fetch('/api/settings/alerts', {method:'POST', headers:{'Content-Type':'application/json', ...await accountHeaders()}, body: JSON.stringify(timings)});
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Save failed');
                     setTimings(data); setTimingSaved('Saved');
